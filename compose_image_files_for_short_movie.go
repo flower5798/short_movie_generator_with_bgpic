@@ -1,8 +1,8 @@
 package main
 
 import (
+	"flag"
 	"fmt"
-	"github.com/nfnt/resize"
 	"image"
 	"image/draw"
 	"image/png"
@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/nfnt/resize"
 )
 
 func timeToFloat64Sec(timeStr string) (float64, error) {
@@ -41,7 +43,7 @@ func timeToFloat64Sec(timeStr string) (float64, error) {
 	return totalSeconds, nil
 }
 
-func generateImageFrame(i int, outputPicNumber int, bgImage image.Image, bgWidth int, bgHeight int, wg *sync.WaitGroup) {
+func generateImageFrame(i int, outputPicNumber int, bgImage image.Image, bgWidth int, bgHeight int, movieZoomCoeff float64, wg *sync.WaitGroup) {
 	defer wg.Done() // このgoroutineが終了したらWaitGroupのカウンタをデクリメント
 
 	// 出力用のキャンバスを作成
@@ -73,10 +75,9 @@ func generateImageFrame(i int, outputPicNumber int, bgImage image.Image, bgWidth
 	imgHeight := imgBounds.Dy()
 
 	// 拡大縮小の比率を計算（横幅を背景画像に合わせる）
-	picZoomCoeff := 1.3
 	scale := float64(bgWidth) / float64(imgWidth)
-	newWidth := uint(float64(bgWidth) * picZoomCoeff)
-	newHeight := uint(float64(imgHeight) * picZoomCoeff * scale)
+	newWidth := uint(float64(bgWidth) * movieZoomCoeff)
+	newHeight := uint(float64(imgHeight) * movieZoomCoeff * scale)
 
 	// 画像のリサイズを行う
 	resizedImage := resize.Resize(newWidth, newHeight, img, resize.Lanczos3)
@@ -99,25 +100,31 @@ func generateImageFrame(i int, outputPicNumber int, bgImage image.Image, bgWidth
 }
 
 func main() {
-	// 引数読み込み
-	args := os.Args
-	if len(args) != 4 {
-		panic(fmt.Sprintf("number of args is not correct. args length: %d", len(args)))
+	// load arguments
+	var (
+		backgroundImageFileName = flag.String("bg_image", "", "movie background image")
+		startTime               = flag.String("start_time", "", "movie start time")
+		endTime                 = flag.String("end_time", "", "movie end time")
+		movieZoomCoeff          = flag.Float64("pic_zoom_coeff", 1.0, "movie frame zoom coefficient")
+		fps                     = flag.Int("fps", 30, "fps of input movie")
+	)
+	flag.Parse()
+
+	if *backgroundImageFileName == "" || *startTime == "" || *endTime == "" {
+		fmt.Println("Error: -backgroundImageFileName, -startTime and -endTime are required arguments.")
+		flag.Usage()
+		os.Exit(1)
 	}
-	backgroundImageFileName := args[1]
-	startTime := args[2]
-	endTime := args[3]
 
-	startSecFloat64, _ := timeToFloat64Sec(startTime)
-	endSecFloat64, _ := timeToFloat64Sec(endTime)
+	startSecFloat64, _ := timeToFloat64Sec(*startTime)
+	endSecFloat64, _ := timeToFloat64Sec(*endTime)
 
-	fmt.Printf("background image file name: %s\n", backgroundImageFileName)
+	fmt.Printf("background image file name: %s\n", *backgroundImageFileName)
 	fmt.Printf("duration: %f to %f\n", startSecFloat64, endSecFloat64)
-
-	fps := 30 // TODO 任意引数化
+	fmt.Printf("movie zoom coefficient: %f\n", *movieZoomCoeff)
 
 	// 背景画像を読み込む
-	bgFile, err := os.Open(backgroundImageFileName)
+	bgFile, err := os.Open(*backgroundImageFileName)
 	if err != nil {
 		fmt.Println("背景画像を開けません:", err)
 		return
@@ -136,7 +143,7 @@ func main() {
 	bgHeight := bgBounds.Dy()
 
 	// 連番のPNGファイルを読み込んで、背景に貼り付ける
-	startFrameNumber := max(int(float64(fps)*startSecFloat64), 1) // ffmpegで吐き出される画像ファイルの連番の開始は1
+	startFrameNumber := max(int(float64(*fps)*startSecFloat64), 1) // ffmpegで吐き出される画像ファイルの連番の開始は1
 
 	// frameのファイル数をカウント
 	pattern := "decomposed_ffmpeg_frames/frame_*.png"
@@ -147,7 +154,7 @@ func main() {
 	frameFilesCount := len(files)
 	fmt.Printf("frame files count: %d\n", frameFilesCount)
 
-	endFrameNumber := min(int(float64(fps)*endSecFloat64), frameFilesCount)
+	endFrameNumber := min(int(float64(*fps)*endSecFloat64), frameFilesCount)
 
 	// goroutineを使った変換処理を実行
 	var wg sync.WaitGroup
@@ -155,7 +162,7 @@ func main() {
 	for i := startFrameNumber; i <= endFrameNumber; i++ {
 		wg.Add(1) // WaitGroupのカウンタをインクリメント
 		outputPicNumber := i - startFrameNumber
-		go generateImageFrame(i, outputPicNumber, bgImage, bgWidth, bgHeight, &wg) // goroutineでフレーム生成
+		go generateImageFrame(i, outputPicNumber, bgImage, bgWidth, bgHeight, *movieZoomCoeff, &wg) // goroutineでフレーム生成
 	}
 
 	// 全てのgoroutineが完了するまで待機
