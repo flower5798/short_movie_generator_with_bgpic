@@ -2,14 +2,14 @@ package main
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"github.com/nfnt/resize"
 	"image"
 	"image/draw"
 	"image/png"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -136,7 +136,7 @@ func main() {
 	bgHeight := bgBounds.Dy()
 
 	// 連番のPNGファイルを読み込んで、背景に貼り付ける
-	startFrameNumber := max(int(float64(fps) * startSecFloat64), 1) // ffmpegで吐き出される画像ファイルの連番の開始は1
+	startFrameNumber := max(int(float64(fps)*startSecFloat64), 1) // ffmpegで吐き出される画像ファイルの連番の開始は1
 
 	// frameのファイル数をカウント
 	pattern := "decomposed_ffmpeg_frames/frame_*.png"
@@ -147,7 +147,7 @@ func main() {
 	frameFilesCount := len(files)
 	fmt.Printf("frame files count: %d\n", frameFilesCount)
 
-	endFrameNumber := min(int(float64(fps) * endSecFloat64), frameFilesCount)
+	endFrameNumber := min(int(float64(fps)*endSecFloat64), frameFilesCount)
 
 	// goroutineを使った変換処理を実行
 	var wg sync.WaitGroup
